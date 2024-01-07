@@ -147,10 +147,10 @@ module "storage-account" {
   for_each = toset(var.environments)
   source   = "./modules/storage-account"
 
-  rg_name  = azurerm_resource_group.rg[each.key].name
-  location = var.azure_location
-  name_key = "${var.business_unit}${each.key}"
-  name_suffix = "dbw"
+  rg_name        = azurerm_resource_group.rg[each.key].name
+  location       = var.azure_location
+  name_key       = "${var.business_unit}${each.key}"
+  name_suffix    = "dbw"
   container_name = "datalake"
 
   tags = {
