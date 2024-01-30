@@ -19,43 +19,45 @@ provider "azurerm" {
 }
 
 locals {
-  # if var.bunit is not empty appends a slash "-" 
-  business_unit = "${var.business_unit}${var.business_unit != "" ? "-" : ""}"
+  businessUnitLower = lower(var.business_unit)
+  businessUnitUpper = upper(var.business_unit)
+  appNameLower      = lower(var.application_name)
 }
 
 
-# For each environment create an Azure resource group, vnets, databricks workspace and storage account
-# 
 resource "azurerm_resource_group" "rg" {
-  for_each = toset(var.environments)
+  for_each = { for env in var.environments : env.envname => env }
 
-  name     = "rg-${local.business_unit}databricks-${each.key}-${var.azure_resource_location_naming_keyword}"
+  name = "rg-${local.businessUnitLower}-${local.appNameLower}-${each.value.envname}-${var.azure_resource_location_naming_keyword}"
+  # different naming convention with focus on business unit
+  #name     = "${local.businessUnitUpper}-${var.application_name}-${each.value.envname}-${var.azure_resource_location_naming_keyword}"
+
   location = var.azure_location
 
   tags = {
-    env = "${each.key}"
+    env = "${each.value.envname}"
   }
 }
 
 resource "azurerm_virtual_network" "vnet" {
-  for_each = toset(var.environments)
+  for_each = { for env in var.environments : env.envname => env }
 
-  name                = "vnet-databricks-${each.key}"
-  address_space       = ["10.139.0.0/16"]
-  location            = azurerm_resource_group.rg[each.key].location
-  resource_group_name = azurerm_resource_group.rg[each.key].name
+  name                = "vnet-databricks-${each.value.envname}"
+  address_space       = each.value.vnet.address_space
+  location            = azurerm_resource_group.rg[each.value.envname].location
+  resource_group_name = azurerm_resource_group.rg[each.value.envname].name
 }
 
 resource "azurerm_subnet" "public" {
-  for_each = toset(var.environments)
+  for_each = { for env in var.environments : env.envname => env }
 
-  name                 = "snet-public-${each.key}"
-  resource_group_name  = azurerm_resource_group.rg[each.key].name
-  virtual_network_name = azurerm_virtual_network.vnet[each.key].name
-  address_prefixes     = ["10.139.0.0/18"]
+  name                 = "snet-public-${each.value.envname}"
+  resource_group_name  = azurerm_resource_group.rg[each.value.envname].name
+  virtual_network_name = azurerm_virtual_network.vnet[each.value.envname].name
+  address_prefixes     = each.value.vnet.public_subnet_address_prefixes
 
   delegation {
-    name = "databricks-${each.key}-del"
+    name = "databricks-${each.value.envname}-del"
 
     service_delegation {
       actions = [
@@ -69,15 +71,15 @@ resource "azurerm_subnet" "public" {
 }
 
 resource "azurerm_subnet" "private" {
-  for_each = toset(var.environments)
+  for_each = { for env in var.environments : env.envname => env }
 
-  name                 = "snet-private-${each.key}"
-  resource_group_name  = azurerm_resource_group.rg[each.key].name
-  virtual_network_name = azurerm_virtual_network.vnet[each.key].name
-  address_prefixes     = ["10.139.64.0/18"]
+  name                 = "snet-private-${each.value.envname}"
+  resource_group_name  = azurerm_resource_group.rg[each.value.envname].name
+  virtual_network_name = azurerm_virtual_network.vnet[each.value.envname].name
+  address_prefixes     = each.value.vnet.private_subnet_address_prefixes
 
   delegation {
-    name = "databricks-${each.key}-del"
+    name = "databricks-${each.value.envname}-del"
 
     service_delegation {
       actions = [
@@ -91,70 +93,78 @@ resource "azurerm_subnet" "private" {
 }
 
 resource "azurerm_subnet_network_security_group_association" "private" {
-  for_each = toset(var.environments)
+  for_each = { for env in var.environments : env.envname => env }
 
-  subnet_id                 = azurerm_subnet.private[each.key].id
-  network_security_group_id = azurerm_network_security_group.nsg[each.key].id
+  subnet_id                 = azurerm_subnet.private[each.value.envname].id
+  network_security_group_id = azurerm_network_security_group.nsg[each.value.envname].id
 }
 
 resource "azurerm_subnet_network_security_group_association" "public" {
-  for_each = toset(var.environments)
+  for_each = { for env in var.environments : env.envname => env }
 
-  subnet_id                 = azurerm_subnet.public[each.key].id
-  network_security_group_id = azurerm_network_security_group.nsg[each.key].id
+  subnet_id                 = azurerm_subnet.public[each.value.envname].id
+  network_security_group_id = azurerm_network_security_group.nsg[each.value.envname].id
 }
 
 resource "azurerm_network_security_group" "nsg" {
-  for_each = toset(var.environments)
+  for_each = { for env in var.environments : env.envname => env }
 
-  name                = "nsg-databricks-${each.key}"
-  location            = azurerm_resource_group.rg[each.key].location
-  resource_group_name = azurerm_resource_group.rg[each.key].name
+  name                = "nsg-databricks-${each.value.envname}"
+  location            = azurerm_resource_group.rg[each.value.envname].location
+  resource_group_name = azurerm_resource_group.rg[each.value.envname].name
 }
 
 
-
-# see https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/databricks_workspace
-#
 resource "azurerm_databricks_workspace" "dbw" {
-  for_each = toset(var.environments)
+  for_each = { for env in var.environments : env.envname => env }
 
-  resource_group_name         = azurerm_resource_group.rg[each.key].name
-  location                    = azurerm_resource_group.rg[each.key].location
-  name                        = "dbw-${local.business_unit}${each.key}"
-  sku                         = "premium"
-  managed_resource_group_name = "rg-${local.business_unit}databricks-${each.key}-managed-services"
+  resource_group_name = azurerm_resource_group.rg[each.value.envname].name
+  location            = azurerm_resource_group.rg[each.value.envname].location
+  name                = "dbw-${local.businessUnitLower}-${local.appNameLower}-${each.value.envname}"
+  # different naming convention with focus on business unit
+  #name                = "${local.businessUnitLower}-dbw-${each.value.envname}"
+
+  sku = "premium"
+
+  managed_resource_group_name = "dbw-${local.businessUnitLower}-${local.appNameLower}-${each.value.envname}-managed"
+  # different naming convention with focus on business unit
+  #managed_resource_group_name = "${local.businessUnitUpper}-${var.application_name}-${each.value.envname}-managed"
 
   public_network_access_enabled = true
 
   custom_parameters {
     no_public_ip        = true
-    public_subnet_name  = azurerm_subnet.public[each.key].name
-    private_subnet_name = azurerm_subnet.private[each.key].name
-    virtual_network_id  = azurerm_virtual_network.vnet[each.key].id
+    public_subnet_name  = azurerm_subnet.public[each.value.envname].name
+    private_subnet_name = azurerm_subnet.private[each.value.envname].name
+    virtual_network_id  = azurerm_virtual_network.vnet[each.value.envname].id
 
-    public_subnet_network_security_group_association_id  = azurerm_subnet_network_security_group_association.public[each.key].id
-    private_subnet_network_security_group_association_id = azurerm_subnet_network_security_group_association.private[each.key].id
+    public_subnet_network_security_group_association_id  = azurerm_subnet_network_security_group_association.public[each.value.envname].id
+    private_subnet_network_security_group_association_id = azurerm_subnet_network_security_group_association.private[each.value.envname].id
   }
 
   tags = {
-    env = "${each.key}"
+    env = "${each.value.envname}"
   }
 }
 
 
 module "storage-account" {
-  for_each = toset(var.environments)
+  for_each = { for env in var.environments : env.envname => env }
   source   = "./modules/storage-account"
 
-  rg_name        = azurerm_resource_group.rg[each.key].name
-  location       = var.azure_location
-  name_key       = "${var.business_unit}${each.key}"
+  rg_name        = azurerm_resource_group.rg[each.value.envname].name
+  location       = azurerm_resource_group.rg[each.value.envname].location
+  name_key       = "${local.businessUnitLower}${each.value.envname}"
   name_suffix    = "dbw"
   container_name = "datalake"
 
+  account_kind             = each.value.storage.account_kind
+  account_tier             = each.value.storage.account_tier
+  account_replication_type = each.value.storage.account_replication_type
+  is_hns_enabled           = each.value.storage.is_hns_enabled
+
   tags = {
-    env = "${each.key}"
+    env = "${each.value.envname}"
   }
 }
 

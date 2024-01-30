@@ -1,12 +1,11 @@
 # used for the storage account name
 resource "random_string" "storage_account_suffix" {
   length  = 6
-  upper = false
+  upper   = false
   special = false
 }
 
-# see https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account
-#
+
 resource "azurerm_storage_account" "st" {
   name                     = "st${var.name_key}${var.name_suffix}${random_string.storage_account_suffix.result}"
   resource_group_name      = var.rg_name
@@ -19,8 +18,7 @@ resource "azurerm_storage_account" "st" {
   tags = var.tags
 }
 
-# see https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_container
-#
+
 resource "azurerm_storage_container" "container" {
   storage_account_name  = azurerm_storage_account.st.name
   name                  = var.container_name
@@ -28,8 +26,6 @@ resource "azurerm_storage_container" "container" {
 }
 
 
-# see https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/databricks_access_connector
-#
 resource "azurerm_databricks_access_connector" "external" {
   name                = "ac-${var.name_key}${var.name_suffix}"
   resource_group_name = var.rg_name
@@ -41,9 +37,9 @@ resource "azurerm_databricks_access_connector" "external" {
 
 # see https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment
 #
-resource "azurerm_role_assignment" "contributor" {
-  scope                = azurerm_storage_account.st.id
-  role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azurerm_databricks_access_connector.external.identity[0].principal_id
-}
+#resource "azurerm_role_assignment" "contributor" {
+#  scope                = azurerm_storage_account.st.id
+#  role_definition_name = "Storage Blob Data Contributor"
+#  principal_id         = azurerm_databricks_access_connector.external.identity[0].principal_id
+#}
 
