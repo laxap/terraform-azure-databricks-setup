@@ -17,7 +17,7 @@ For each environment defined in the variable _environments_ the following Azure 
 
 The _environments_ variable contains a list of objects. In each object the environment name and the settings for the storage account and virtual networks of each environment have to be provided. The following code block shows an example of a object defining one environment.
 
-```json
+```
 {
     envname = "dev",
     storage = {
