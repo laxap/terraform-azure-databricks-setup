@@ -43,3 +43,5 @@ Additional variables are provided for:
 - Azure location (region) where the resources are created
 
 
+![Screenshot showing the Azure resources created for one environment.](https://github.com/laxap/terraform-azure-databricks-setup/blob/main/assets/screenshot-azure-resources.jpg?raw=true)
+
